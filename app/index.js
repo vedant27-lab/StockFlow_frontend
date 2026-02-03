@@ -1,199 +1,153 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  FlatList,
+  Dimensions,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
-import { deleteProduct, getProducts } from '../services/api';
+import { PieChart } from 'react-native-chart-kit';
+import { createFolder, getDashboardStats, getFolders } from '../services/api';
 
-export default function ProductListScreen() {
+const screenWidth = Dimensions.get("window").width;
+
+export default function HomeScreen() {
   const router = useRouter();
-  const [products, setProducts] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [stats, setStats] = useState([]);
+  const [grandTotal, setGrandTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  
+  const [newFolderName, setNewFolderName] = useState("");
+  const [showInput, setShowInput] = useState(false);
 
-  const loadProducts = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const data = await getProducts();
-      setProducts(data);
+      const folderData = await getFolders();
+      const dashboardData = await getDashboardStats();
+      
+      setFolders(folderData);
+      setStats(dashboardData.stats); 
+      setGrandTotal(dashboardData.grand_total);
     } catch (error) {
-      Alert.alert("Error", "Failed to load products. Check your API URL.");
+      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadProducts();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { loadData(); }, []));
 
-  const handleDelete = async (id) => {
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
     try {
-      await deleteProduct(id);
-      loadProducts();
-    } catch (error) {
-      Alert.alert("Error", "Could not delete product");
+      await createFolder(newFolderName);
+      setNewFolderName("");
+      setShowInput(false);
+      loadData();
+    } catch (e) {
+      Alert.alert("Error", "Could not create folder");
     }
   };
 
-  const handleEdit = (item) => {
-    const fieldsString = JSON.stringify(item.fields);
-    
-    router.push({
-      pathname: "/edit",
-      params: { 
-        id: item.id, 
-        name: item.name, 
-        fields: fieldsString 
-      }
-    });
-  };
-
-  const renderProduct = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.productName}>{item.name}</Text>
-        <View style={styles.buttonGroup}>
-          <TouchableOpacity 
-            onPress={() => handleEdit(item)}
-            style={styles.editButton}
-          >
-            <Text style={styles.btnText}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => handleDelete(item.id)}
-            style={styles.deleteButton}
-          >
-            <Text style={styles.btnText}>Delete</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.fieldsContainer}>
-        {Object.entries(item.fields).map(([key, value]) => (
-          <Text key={key} style={styles.fieldText}>
-            <Text style={styles.fieldLabel}>{key}: </Text> {value}
-          </Text>
-        ))}
-      </View>
-    </View>
-  );
+  const chartData = stats.map((item, index) => ({
+    name: item.folder_name,
+    population: parseInt(item.total_metric), 
+    color: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'][index % 5],
+    legendFontColor: "#7F7F7F",
+    legendFontSize: 15
+  })).filter(item => item.population > 0); 
 
   return (
-    <View style={styles.container}>
-      {loading ? (
-        <ActivityIndicator size="large" color="#0000ff" style={{ marginTop: 20 }} />
+    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+      <View style={styles.chartContainer}>
+        <Text style={styles.chartTitle}>Inventory Overview</Text>
+        <Text style={styles.totalText}>Total Items: {grandTotal}</Text>
+        
+        {chartData.length > 0 ? (
+          <PieChart
+            data={chartData}
+            width={screenWidth - 40}
+            height={220}
+            chartConfig={{
+              color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+            }}
+            accessor={"population"}
+            backgroundColor={"transparent"}
+            paddingLeft={"15"}
+            absolute
+          />
+        ) : (
+          <Text style={styles.noDataText}>Add products to see charts!</Text>
+        )}
+      </View>
+      <Text style={styles.sectionTitle}>My Categories</Text>
+      {showInput ? (
+        <View style={styles.inputRow}>
+          <TextInput 
+            style={styles.input} 
+            placeholder="Folder Name (e.g. Jeans)" 
+            value={newFolderName}
+            onChangeText={setNewFolderName}
+          />
+          <TouchableOpacity style={styles.saveBtn} onPress={handleCreateFolder}>
+            <Text style={styles.btnText}>Save</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
-        <FlatList
-          data={products}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderProduct}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={<Text style={styles.emptyText}>No products found.</Text>}
-        />
+        <TouchableOpacity style={styles.addFolderBtn} onPress={() => setShowInput(true)}>
+          <Text style={styles.btnText}>+ New Category</Text>
+        </TouchableOpacity>
       )}
 
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={() => router.push('/add')} 
-      >
-        <Text style={styles.fabText}>+ Add Product</Text>
-      </TouchableOpacity>
-    </View>
+      <View style={styles.grid}>
+        {folders.map((folder) => (
+          <TouchableOpacity 
+            key={folder.id} 
+            style={styles.folderCard}
+            onPress={() => router.push({ pathname: "/folder/[id]", params: { id: folder.id, name: folder.name } })}
+          >
+            <Text style={styles.folderIcon}>📂</Text>
+            <Text style={styles.folderName}>{folder.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 10,
+  container: { flex: 1, backgroundColor: '#f4f6f8', padding: 20 },
+  chartContainer: {
+    backgroundColor: 'white', borderRadius: 15, padding: 20, marginBottom: 20,
+    elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5
   },
-  listContent: {
-    paddingBottom: 80,
+  chartTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  totalText: { fontSize: 14, color: '#666', marginBottom: 10 },
+  noDataText: { textAlign: 'center', marginVertical: 20, color: '#999' },
+  
+  sectionTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, color: '#222' },
+  
+  addFolderBtn: {
+    backgroundColor: '#007bff', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 20
   },
-  card: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+  inputRow: { flexDirection: 'row', marginBottom: 20 },
+  input: { 
+    flex: 1, backgroundColor: 'white', padding: 12, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: '#ddd' 
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 5,
+  saveBtn: { backgroundColor: '#28a745', justifyContent: 'center', paddingHorizontal: 20, borderRadius: 8 },
+  btnText: { color: 'white', fontWeight: 'bold' },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  folderCard: {
+    width: '48%', backgroundColor: 'white', padding: 20, borderRadius: 12,
+    marginBottom: 15, alignItems: 'center', elevation: 2
   },
-  productName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    flex: 1, 
-  },
-  buttonGroup: {
-    flexDirection: 'row',
-  },
-  editButton: {
-    backgroundColor: '#ffc107',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 5,
-    marginRight: 8,
-  },
-  deleteButton: {
-    backgroundColor: '#ff4444',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 5,
-  },
-  btnText: {
-    color: 'black', 
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  fieldsContainer: {
-    marginTop: 5,
-  },
-  fieldText: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 2,
-  },
-  fieldLabel: {
-    fontWeight: '600',
-    color: '#555',
-  },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 50,
-    color: '#888',
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    backgroundColor: '#007bff',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 30,
-    elevation: 5,
-  },
-  fabText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  folderIcon: { fontSize: 30, marginBottom: 5 },
+  folderName: { fontWeight: '600', color: '#444' }
 });
