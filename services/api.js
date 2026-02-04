@@ -8,24 +8,23 @@ const api = axios.create({
     },
 });
 
-export const getDashboardState = async () => {
+export const getDashboardStats = async () => {
     const response = await api.get('/dashboard');
     return response.data;
 };
-
 export const getFolders = async () => {
     const response = await api.get('/folders');
     return response.data;
 };
 
 export const createFolder = async (name) => {
-    const response = await api.get(`/products?folder_id=${folderId}`);
+    const response = await api.post('/folders', { name });
     return response.data;
 } 
 
-export const getProducts = async () => {
+export const getProducts = async (folderId) => {
     try {
-        const response = await api.get('/products');
+        const response = await api.get(`/products?folder_id=${folderId}`);
         return response.data;
     }catch(error) {
         console.error("Error fetching products:", error);
@@ -53,7 +52,7 @@ export const deleteProduct = async (id) => {
     }
 };
 
-export const getFields = async () => {
+export const getFields = async (folderId) => {
     try {
         const response = await api.get(`/fields?folder_id=${folderId}`);
         return response.data;
