@@ -22,6 +22,16 @@ export const createFolder = async (name) => {
     return response.data;
 } 
 
+export const updateFolder = async (id, name) => {
+    const response = await api.put(`/folders/${id}`, {name});
+    return response.data;
+};
+
+export const deleteFolder = async (id) => {
+    const response = await api.delete(`/folders/${id}`);
+    return response.data;
+}
+
 export const getProducts = async (folderId) => {
     try {
         const response = await api.get(`/products?folder_id=${folderId}`);
