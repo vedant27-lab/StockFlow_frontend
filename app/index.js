@@ -1,22 +1,21 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-  Alert,
   Dimensions,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
 import {
-  createFolder,
-  deleteFolder,
-  getDashboardStats,
+  getAvailableMetrics,
+  getChartData,
   getFolders,
-  updateFolder
+  getMetricPreference,
+  saveMetricPreference
 } from '../services/api';
 
 const screenWidth = Dimensions.get("window").width;
@@ -24,94 +23,87 @@ const screenWidth = Dimensions.get("window").width;
 export default function HomeScreen() {
   const router = useRouter();
   const [folders, setFolders] = useState([]);
-  const [stats, setStats] = useState([]);
+  
+  const [metrics, setMetrics] = useState([]);
+  const [selectedMetric, setSelectedMetric] = useState(null);
+  const [chartData, setChartData] = useState([]);
   const [grandTotal, setGrandTotal] = useState(0);
-  const [inputText, setInputText] = useState("");
-  const [showInput, setShowInput] = useState(false);
-  const [editingFolderId, setEditingFolderId] = useState(null); // If null, we are creating. If set, we are editing.
+  const [loading, setLoading] = useState(false);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const folderData = await getFolders();
-      const dashboardData = await getDashboardStats();
       setFolders(folderData);
-      setStats(dashboardData.stats);
-      setGrandTotal(dashboardData.grand_total);
+      const availableMetrics = await getAvailableMetrics();
+      setMetrics(availableMetrics);
+      let metricToShow = selectedMetric;
+      if (!metricToShow) {
+        const saved = await getMetricPreference();
+        if (saved && availableMetrics.includes(saved)) {
+          metricToShow = saved;
+        } else if (availableMetrics.length > 0) {
+          metricToShow = availableMetrics[0]; 
+        }
+      }
+      if (metricToShow) {
+        setSelectedMetric(metricToShow);
+        const data = await getChartData(metricToShow);
+        setChartData(data.chart_data);
+        setGrandTotal(data.total);
+      }
     } catch (error) {
       console.error(error);
+    } finally {
+      setLoading(false);
     }
   };
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
-  const handleSave = async () => {
-    if (!inputText.trim()) {
-      Alert.alert("Error", "Name cannot be empty");
-      return;
-    }
-
-    try {
-      if (editingFolderId) {
-        await updateFolder(editingFolderId, inputText);
-        Alert.alert("Success", "Category updated!");
-      } else {
-        await createFolder(inputText);
-        Alert.alert("Success", "Category created!");
-      }
-      resetInput();
-      loadData();
-    } catch (e) {
-      Alert.alert("Error", "Operation failed");
-    }
+  const handleMetricSelect = async (metric) => {
+    setSelectedMetric(metric);
+    saveMetricPreference(metric); 
+    setLoading(true);
+    const data = await getChartData(metric);
+    setChartData(data.chart_data);
+    setGrandTotal(data.total);
+    setLoading(false);
   };
-
-  const startEdit = (folder) => {
-    setInputText(folder.name);
-    setEditingFolderId(folder.id);
-    setShowInput(true);
-  };
-
-  const handleDelete = (id) => {
-    Alert.alert(
-      "Delete Category?",
-      "Warning: This will delete ALL products and fields inside this category forever.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive", 
-          onPress: async () => {
-            await deleteFolder(id);
-            loadData();
-          } 
-        }
-      ]
-    );
-  };
-
-  const resetInput = () => {
-    setInputText("");
-    setEditingFolderId(null);
-    setShowInput(false);
-  };
-
-  
-  const chartData = stats.map((item, index) => ({
-    name: item.folder_name,
-    population: parseInt(item.total_metric),
+  const pieData = chartData.map((item, index) => ({
+    name: item.label,
+    population: item.value,
     color: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'][index % 5],
     legendFontColor: "#7F7F7F",
     legendFontSize: 15
-  })).filter(item => item.population > 0);
+  }));
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Inventory Overview</Text>
-        <Text style={styles.totalText}>Total Items: {grandTotal}</Text>
-        {chartData.length > 0 ? (
+    <ScrollView 
+      style={styles.container} 
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
+    >
+      <View style={styles.tabContainer}>
+        <Text style={styles.tabLabel}>Visualize by:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {metrics.map(m => (
+            <TouchableOpacity 
+              key={m} 
+              style={[styles.tab, selectedMetric === m && styles.activeTab]}
+              onPress={() => handleMetricSelect(m)}
+            >
+              <Text style={[styles.tabText, selectedMetric === m && styles.activeTabText]}>
+                {m}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          {metrics.length === 0 && <Text style={styles.noMetrics}>Add numeric fields to see options</Text>}
+        </ScrollView>
+      </View>
+      <View style={styles.chartCard}>
+        <Text style={styles.chartTitle}>Total {selectedMetric}: {grandTotal}</Text>
+        {pieData.length > 0 ? (
           <PieChart
-            data={chartData}
+            data={pieData}
             width={screenWidth - 40}
             height={220}
             chartConfig={{ color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})` }}
@@ -121,91 +113,53 @@ export default function HomeScreen() {
             absolute
           />
         ) : (
-          <Text style={styles.noDataText}>Add products to see charts!</Text>
+          <Text style={styles.emptyChart}>No data available for {selectedMetric}</Text>
         )}
       </View>
-
-      <Text style={styles.sectionTitle}>My Categories</Text>
-      
-      {showInput ? (
-        <View style={styles.inputBox}>
-          <Text style={styles.inputLabel}>
-            {editingFolderId ? "Edit Category Name" : "New Category Name"}
-          </Text>
-          <View style={styles.inputRow}>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Category Name" 
-              value={inputText}
-              onChangeText={setInputText}
-              autoFocus={true}
-            />
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.btnText}>{editingFolderId ? "Update" : "Save"}</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity onPress={resetInput}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity style={styles.addFolderBtn} onPress={() => setShowInput(true)}>
-          <Text style={styles.btnText}>+ NEW CATEGORY</Text>
-        </TouchableOpacity>
-      )}
-
+      <Text style={styles.sectionTitle}>Categories</Text>
       <View style={styles.grid}>
         {folders.map((folder) => (
-          <View key={folder.id} style={styles.folderWrapper}>
-            <TouchableOpacity 
-              style={styles.folderCard}
-              onPress={() => router.push({ pathname: "/folder/[id]", params: { id: folder.id, name: folder.name } })}
-            >
-              <Text style={styles.folderIcon}>📂</Text>
-              <Text style={styles.folderName} numberOfLines={1}>{folder.name}</Text>
-            </TouchableOpacity>
-
-            <View style={styles.actionRow}>
-              <TouchableOpacity onPress={() => startEdit(folder)} style={styles.iconBtn}>
-                <Text style={styles.iconText}>✎</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(folder.id)} style={styles.iconBtn}>
-                <Text style={[styles.iconText, { color: 'red' }]}>🗑</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <TouchableOpacity 
+            key={folder.id} 
+            style={styles.folderCard}
+            onPress={() => router.push({ pathname: "/folder/[id]", params: { id: folder.id, name: folder.name } })}
+          >
+            <Text style={styles.folderIcon}>📂</Text>
+            <Text style={styles.folderName}>{folder.name}</Text>
+          </TouchableOpacity>
         ))}
       </View>
+
+      <TouchableOpacity 
+        style={styles.addBtn}
+        onPress={() => router.push("/create-folder")}
+      >
+        <Text style={styles.addBtnText}>+ New Category</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8', padding: 20 },
-  chartContainer: { backgroundColor: 'white', borderRadius: 15, padding: 20, marginBottom: 20, elevation: 2 },
-  chartTitle: { fontSize: 18, fontWeight: 'bold' },
-  totalText: { fontSize: 14, color: '#666', marginBottom: 10 },
-  noDataText: { textAlign: 'center', marginVertical: 20, color: '#999' },
+  container: { flex: 1, backgroundColor: '#f4f6f8', padding: 15 },
   
-  sectionTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
-  
-  addFolderBtn: { backgroundColor: '#007bff', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 20 },
-  inputBox: { backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 20, elevation: 3 },
-  inputLabel: { fontWeight: 'bold', marginBottom: 10, color: '#555' },
-  inputRow: { flexDirection: 'row', marginBottom: 10 },
-  input: { flex: 1, backgroundColor: '#f9f9f9', padding: 12, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: '#ddd' },
-  saveBtn: { backgroundColor: '#28a745', justifyContent: 'center', paddingHorizontal: 20, borderRadius: 8 },
-  btnText: { color: 'white', fontWeight: 'bold' },
-  cancelText: { color: 'red', textAlign: 'center', marginTop: 5 },
+  tabContainer: { marginBottom: 15 },
+  tabLabel: { fontSize: 14, color: '#666', marginBottom: 8 },
+  tab: { paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#e0e0e0', borderRadius: 20, marginRight: 10 },
+  activeTab: { backgroundColor: '#007bff' },
+  tabText: { color: '#333', fontWeight: '600' },
+  activeTabText: { color: 'white' },
+  noMetrics: { color: '#999', fontStyle: 'italic', marginTop: 5 },
 
+  chartCard: { backgroundColor: 'white', borderRadius: 15, padding: 20, marginBottom: 20, elevation: 3 },
+  chartTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  emptyChart: { textAlign: 'center', color: '#999', marginVertical: 20 },
+
+  sectionTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  
-  folderWrapper: { width: '48%', backgroundColor: 'white', borderRadius: 12, marginBottom: 15, elevation: 2, overflow: 'hidden' },
-  folderCard: { padding: 20, alignItems: 'center', backgroundColor: 'white' },
+  folderCard: { width: '48%', backgroundColor: 'white', padding: 20, borderRadius: 12, marginBottom: 15, alignItems: 'center', elevation: 2 },
   folderIcon: { fontSize: 30, marginBottom: 5 },
-  folderName: { fontWeight: '600', color: '#333' },
   
-  actionRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#eee' },
-  iconBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: '#fafafa' },
-  iconText: { fontSize: 18, fontWeight: 'bold', color: '#666' }
+  addBtn: { backgroundColor: '#28a745', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10, marginBottom: 30 },
+  addBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
 });

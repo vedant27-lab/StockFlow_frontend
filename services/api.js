@@ -1,95 +1,27 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-const API_URL = ' http://10.209.122.174:5000';
+const API_URL = 'http://10.209.122.174:5000'; 
 
-const api = axios.create({
-    baseURL: API_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
-});
-
-export const getDashboardStats = async () => {
-    const response = await api.get('/dashboard');
-    return response.data;
+const api = axios.create({ baseURL: API_URL });
+export const getAvailableMetrics = async () => {
+  const response = await api.get('/analytics/metrics');
+  return response.data;
 };
-export const getFolders = async () => {
-    const response = await api.get('/folders');
-    return response.data;
+export const getChartData = async (metricName) => {
+  const response = await api.get(`/analytics/data?metric=${metricName}`);
+  return response.data;
 };
-
-export const createFolder = async (name) => {
-    const response = await api.post('/folders', { name });
-    return response.data;
-} 
-
-export const updateFolder = async (id, name) => {
-    const response = await api.put(`/folders/${id}`, {name});
-    return response.data;
+export const saveMetricPreference = async (metric) => {
+  await AsyncStorage.setItem('selected_metric', metric);
 };
-
-export const deleteFolder = async (id) => {
-    const response = await api.delete(`/folders/${id}`);
-    return response.data;
-}
-
-export const getProducts = async (folderId) => {
-    try {
-        const response = await api.get(`/products?folder_id=${folderId}`);
-        return response.data;
-    }catch(error) {
-        console.error("Error fetching products:", error);
-        throw error;
-    }
+export const getMetricPreference = async () => {
+  return await AsyncStorage.getItem('selected_metric');
 };
-
-export const createProduct = async (productData) => {
-    try {
-        const response = await api.post('/products', productData);
-        return response.data;
-    }catch (error) {
-        console.error("Error creating product:", error);
-        throw error;
-    }
-};
-
-export const deleteProduct = async (id) => {
-    try {
-        const response = await api.delete(`/products/${id}`);
-        return response.data;
-    }catch (error) {
-        console.error("Error deleting product:", error);
-        throw error;
-    }
-};
-
-export const getFields = async (folderId) => {
-    try {
-        const response = await api.get(`/fields?folder_id=${folderId}`);
-        return response.data;
-    }catch (error) {
-        console.error("Error fetching fields:", error);
-        throw error;
-    }
-};
-
-export const createField = async (fieldData) => {
-    try {
-        const response = await api.post('/fields', fieldData);
-        return response.data;
-    }catch (error) {
-        console.error("Error creating field:", error);
-        throw error;
-    }
-};
-
-export const updateProduct = async (id, productData) => {
-    try {
-        const response = await api.put(`/products/${id}`, productData);
-        return response.data;
-    }catch (error) {
-        console.error("Error updating product:", error);
-        throw error;
-    }
-};
+export const getFolders = async () => (await api.get('/folders')).data;
+export const createFolder = async (name) => (await api.post('/folders', { name })).data;
+export const getFields = async (folderId) => (await api.get(`/fields?folder_id=${folderId}`)).data;
+export const createField = async (data) => (await api.post('/fields', data)).data;
+export const getProducts = async (folderId) => (await api.get(`/products?folder_id=${folderId}`)).data;
+export const createProduct = async (data) => (await api.post('/products', data)).data;
 
 export default api;

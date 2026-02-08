@@ -14,14 +14,11 @@ export default function EditProductScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // We need the folderId to know which fields (labels) to show
   const { id, name, folderId, fields } = params;
   
   const [productName, setProductName] = useState(name);
   const [fieldValues, setFieldValues] = useState(fields ? JSON.parse(fields) : {});
   const [availableFields, setAvailableFields] = useState([]);
-
-  // Load the field definitions (Labels like "Size", "Color")
   useEffect(() => {
     if (folderId) {
       loadFields();
@@ -49,7 +46,7 @@ export default function EditProductScreen() {
 
     const payload = {
       name: productName,
-      fields: fieldValues // Send updated values
+      fields: fieldValues 
     };
 
     try {
@@ -72,7 +69,6 @@ export default function EditProductScreen() {
         onChangeText={setProductName}
       />
 
-      {/* Render inputs for dynamic fields */}
       {availableFields.map((field) => (
         <View key={field.id} style={styles.fieldContainer}>
           <Text style={styles.label}>
