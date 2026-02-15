@@ -11,7 +11,7 @@ export default function CreateFolderScreen() {
     if (!name.trim()) return;
     try {
       await createFolder(name);
-      router.back(); // Go back to Home
+      router.back(); 
     } catch (error) {
       Alert.alert("Error", "Could not create folder");
     }

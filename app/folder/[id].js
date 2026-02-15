@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   Alert, Modal,
@@ -8,181 +8,304 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { createField, createProduct, getFields, getProducts } from '../../services/api';
+import {
+  createField,
+  createProduct,
+  deleteField,
+  deleteFolder,
+  deleteProduct,
+  getFields,
+  getProducts,
+  updateField,
+  updateFolder,
+  updateProduct
+} from '../../services/api';
 
-export default function FolderExcelScreen() {
-  const { id, name } = useLocalSearchParams();
-  const [fields, setFields] = useState([]); // Columns (Price, Qty)
-  const [products, setProducts] = useState([]); // Rows (Apple, Banana)
+export default function ExcelSheetScreen() {
+  const router = useRouter();
+  const { id, name: initialName } = useLocalSearchParams();
+  const [folderName, setFolderName] = useState(initialName);
   
-  // Modal State for adding new Column/Row
-  const [showColumnModal, setShowColumnModal] = useState(false);
-  const [newColName, setNewColName] = useState('');
-  const [showRowModal, setShowRowModal] = useState(false);
-  const [newRowName, setNewRowName] = useState('');
-  const [newRowValues, setNewRowValues] = useState({});
+  const [fields, setFields] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [id]);
+  // Management State
+  const [activeColumn, setActiveColumn] = useState(null); // Which column header is clicked
+  const [showColMenu, setShowColMenu] = useState(false);
+  const [showFolderMenu, setShowFolderMenu] = useState(false);
+  
+  // Inputs for Modals
+  const [renameText, setRenameText] = useState("");
+
+  useEffect(() => { loadData(); }, [id]);
 
   const loadData = async () => {
     try {
-      const fieldData = await getFields(id);
-      const productData = await getProducts(id);
-      setFields(fieldData);
-      setProducts(productData);
+      setFields(await getFields(id));
+      setProducts(await getProducts(id));
+    } catch (e) { console.error(e); }
+  };
+
+  // --- 1. DIRECT CELL EDITING (Auto-Save) ---
+  const handleCellEdit = async (product, fieldId, newValue) => {
+    // 1. Optimistic Update (Update UI immediately)
+    const updatedProducts = products.map(p => {
+      if (p.id === product.id) {
+        // Update the specific value in the values array
+        const newValues = p.values.map(v => 
+          (v.id === fieldId || v.field_id === fieldId) ? { ...v, value: newValue } : v
+        );
+        // If value didn't exist yet, push it
+        if (!newValues.find(v => v.id === fieldId || v.field_id === fieldId)) {
+          newValues.push({ field_id: fieldId, value: newValue });
+        }
+        return { ...p, values: newValues };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
+
+    // 2. Send to Backend
+    // We need to convert the array back to the object format expected by the API
+    const valueMap = {};
+    updatedProducts.find(p => p.id === product.id).values.forEach(v => {
+      valueMap[v.field_id || v.id] = v.value;
+    });
+
+    try {
+      // Assuming your backend supports partial updates or we re-send everything
+      // Ideally, create a specific endpoint for updating a single cell, but reuse updateProduct for now
+      await updateProduct(product.id, { name: product.name, values: valueMap });
     } catch (e) {
-      console.error(e);
+      console.error("Save failed", e);
     }
   };
 
-  // 1. Add a New Column (e.g., "Tax", "Margin")
-  const handleAddColumn = async () => {
-    if(!newColName) return;
-    try {
-      await createField({ 
-        name: newColName, 
-        type: 'number', // We default to number for analytics
-        folder_id: id 
-      });
-      setNewColName('');
-      setShowColumnModal(false);
-      loadData();
-    } catch (e) { Alert.alert("Error", "Failed to add column"); }
+  const handleRenameProduct = async (product, newName) => {
+    const updatedProducts = products.map(p => p.id === product.id ? { ...p, name: newName } : p);
+    setProducts(updatedProducts);
+    await updateProduct(product.id, { name: newName });
   };
 
-  // 2. Add a New Row (Product)
+  // --- 2. COLUMN MANAGEMENT ---
+  const openColumnMenu = (field) => {
+    setActiveColumn(field);
+    setRenameText(field.name);
+    setShowColMenu(true);
+  };
+
+  const handleRenameColumn = async () => {
+    if (!renameText) return;
+    await updateField(activeColumn.id, renameText);
+    setShowColMenu(false);
+    loadData();
+  };
+
+  const handleDeleteColumn = async () => {
+    Alert.alert("Delete Column?", "Data in this column will be lost.", [
+      { text: "Cancel" },
+      { text: "Delete", style: 'destructive', onPress: async () => {
+        await deleteField(activeColumn.id);
+        setShowColMenu(false);
+        loadData();
+      }}
+    ]);
+  };
+
+  const handleAddColumn = async () => {
+    // Simple prompt for new column
+    Alert.prompt("New Column", "Enter column name (e.g. Price)", [
+      { text: "Cancel" },
+      { text: "Create", onPress: async (text) => {
+          if(text) {
+            await createField({ name: text, type: 'number', folder_id: id });
+            loadData();
+          }
+      }}
+    ]);
+  };
+
+  // --- 3. FOLDER MANAGEMENT ---
+  const handleRenameFolder = async () => {
+    if (!renameText) return;
+    await updateFolder(id, renameText);
+    setFolderName(renameText);
+    setShowFolderMenu(false);
+  };
+
+  const handleDeleteFolder = async () => {
+    Alert.alert("Delete Folder?", "All products inside will be deleted.", [
+      { text: "Cancel" },
+      { text: "Delete", style: 'destructive', onPress: async () => {
+        await deleteFolder(id);
+        router.back();
+      }}
+    ]);
+  };
+
+  // --- 4. ADD/DELETE ROW ---
   const handleAddRow = async () => {
-    if(!newRowName) return;
-    try {
-      await createProduct({
-        name: newRowName,
-        folder_id: id,
-        values: newRowValues
-      });
-      setNewRowName('');
-      setNewRowValues({});
-      setShowRowModal(false);
-      loadData();
-    } catch (e) { Alert.alert("Error", "Failed to add product"); }
+    // Create a blank row immediately
+    await createProduct({ name: "New Item", folder_id: id, values: {} });
+    loadData();
+  };
+
+  const handleDeleteRow = async (prodId) => {
+    await deleteProduct(prodId);
+    loadData();
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{name} Sheet</Text>
-
-      {/* THE EXCEL GRID HEADER */}
-      <View style={styles.headerRow}>
-        <Text style={[styles.cell, styles.headerCell, styles.nameCell]}>Product Name</Text>
-        {fields.map(field => (
-          <Text key={field.id} style={[styles.cell, styles.headerCell]}>{field.name}</Text>
-        ))}
+      
+      {/* HEADER: FOLDER NAME + MENU */}
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => { setRenameText(folderName); setShowFolderMenu(true); }}>
+          <Text style={styles.folderTitle}>{folderName} ▼</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* THE EXCEL ROWS */}
-      <ScrollView>
-        {products.map((prod) => (
-          <View key={prod.id} style={styles.row}>
-            <Text style={[styles.cell, styles.nameCell]}>{prod.name}</Text>
-            {fields.map(field => {
-              // Find the value for this specific column
-              const valObj = prod.values.find(v => v.field_id === field.id);
-              return (
-                <Text key={field.id} style={styles.cell}>
-                  {valObj ? valObj.value : '-'}
-                </Text>
-              );
-            })}
+      {/* THE EXCEL GRID */}
+      <ScrollView horizontal contentContainerStyle={{flexGrow: 1}}>
+        <View>
+          {/* HEADER ROW */}
+          <View style={styles.headerRow}>
+            <View style={[styles.cell, {width: 140, backgroundColor: '#f0f0f0'}]}>
+              <Text style={styles.headerText}>Product Name</Text>
+            </View>
+            
+            {fields.map(f => (
+              <TouchableOpacity 
+                key={f.id} 
+                style={[styles.cell, {width: 100, backgroundColor: '#f0f0f0'}]}
+                onPress={() => openColumnMenu(f)}
+              >
+                <Text style={styles.headerText}>{f.name} ▼</Text>
+              </TouchableOpacity>
+            ))}
+
+            {/* ADD COLUMN BUTTON */}
+            <TouchableOpacity style={[styles.cell, styles.addHeader]} onPress={handleAddColumn}>
+              <Text style={styles.addHeaderText}>+ Col</Text>
+            </TouchableOpacity>
           </View>
-        ))}
+
+          {/* DATA ROWS */}
+          <ScrollView style={{marginBottom: 100}}>
+            {products.map((prod) => (
+              <View key={prod.id} style={styles.row}>
+                {/* Product Name Input */}
+                <TextInput 
+                  style={[styles.cell, styles.input, {width: 140, fontWeight: 'bold'}]}
+                  value={prod.name}
+                  onChangeText={(text) => handleRenameProduct(prod, text)}
+                />
+
+                {/* Dynamic Fields Inputs */}
+                {fields.map(f => {
+                  const valObj = prod.values.find(v => v.id === f.id || v.field_id === f.id);
+                  return (
+                    <TextInput
+                      key={f.id}
+                      style={[styles.cell, styles.input, {width: 100}]}
+                      value={valObj ? String(valObj.value) : ''}
+                      placeholder="-"
+                      keyboardType="numeric"
+                      // Auto-save on every character or onBlur (Blur is safer for API)
+                      onBlur={(e) => handleCellEdit(prod, f.id, e.nativeEvent.text)} 
+                      // For smoother UI, we might need state binding, but direct edit works for simple cases
+                      onChangeText={(text) => {
+                         // Optional: Update local state immediately if laggy
+                      }}
+                    />
+                  );
+                })}
+
+                {/* Delete Row Button */}
+                <TouchableOpacity style={styles.deleteRowBtn} onPress={() => handleDeleteRow(prod.id)}>
+                   <Text style={{color:'red', fontWeight:'bold'}}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            {/* ADD ROW BUTTON */}
+            <TouchableOpacity style={styles.addRowBtn} onPress={handleAddRow}>
+              <Text style={styles.addRowText}>+ Add Row</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
       </ScrollView>
 
-      {/* ACTION BUTTONS */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.btnSecondary} onPress={() => setShowColumnModal(true)}>
-          <Text style={styles.btnTextSec}>+ Add Column (Metric)</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.btnPrimary} onPress={() => setShowRowModal(true)}>
-          <Text style={styles.btnText}>+ Add Row (Product)</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* MODAL: ADD COLUMN */}
-      <Modal visible={showColumnModal} transparent animationType="slide">
-        <View style={styles.modalView}>
-          <Text style={styles.modalTitle}>Add New Metric</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="Name (e.g. Buying Price)" 
-            value={newColName}
-            onChangeText={setNewColName} 
-          />
-          <TouchableOpacity style={styles.btnPrimary} onPress={handleAddColumn}>
-            <Text style={styles.btnText}>Save Column</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.closeBtn} onPress={() => setShowColumnModal(false)}>
-            <Text>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-
-      {/* MODAL: ADD ROW */}
-      <Modal visible={showRowModal} transparent animationType="slide">
-        <View style={styles.modalView}>
-          <Text style={styles.modalTitle}>Add New Product</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="Product Name" 
-            value={newRowName}
-            onChangeText={setNewRowName} 
-          />
-          
-          <Text style={styles.subTitle}>Enter Values:</Text>
-          {fields.map(f => (
-            <TextInput
-              key={f.id}
-              style={styles.input}
-              placeholder={f.name}
-              keyboardType="numeric"
-              onChangeText={(text) => setNewRowValues(prev => ({...prev, [f.id]: text}))}
+      {/* MODAL: COLUMN MENU */}
+      <Modal visible={showColMenu} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowColMenu(false)}>
+          <View style={styles.menuBox}>
+            <Text style={styles.menuTitle}>Manage "{activeColumn?.name}"</Text>
+            <TextInput 
+              style={styles.menuInput} 
+              value={renameText} 
+              onChangeText={setRenameText} 
             />
-          ))}
-
-          <TouchableOpacity style={styles.btnPrimary} onPress={handleAddRow}>
-            <Text style={styles.btnText}>Save Product</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.closeBtn} onPress={() => setShowRowModal(false)}>
-            <Text>Cancel</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity style={styles.menuItem} onPress={handleRenameColumn}>
+              <Text style={styles.menuText}>Rename Column</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={handleDeleteColumn}>
+              <Text style={[styles.menuText, {color: 'red'}]}>Delete Column</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
+
+      {/* MODAL: FOLDER MENU */}
+      <Modal visible={showFolderMenu} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowFolderMenu(false)}>
+          <View style={styles.menuBox}>
+            <Text style={styles.menuTitle}>Manage Folder</Text>
+            <TextInput 
+              style={styles.menuInput} 
+              value={renameText} 
+              onChangeText={setRenameText} 
+            />
+            <TouchableOpacity style={styles.menuItem} onPress={handleRenameFolder}>
+              <Text style={styles.menuText}>Rename Folder</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={handleDeleteFolder}>
+              <Text style={[styles.menuText, {color: 'red'}]}>Delete Folder</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', padding: 10 },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 15 },
+  container: { flex: 1, backgroundColor: '#fff', paddingTop: 40 },
+  topBar: { paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 1, borderColor: '#eee' },
+  folderTitle: { fontSize: 22, fontWeight: 'bold' },
+
+  headerRow: { flexDirection: 'row', borderBottomWidth: 2, borderColor: '#333' },
+  row: { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#eee', alignItems: 'center' },
   
-  // Excel Grid Styles
-  headerRow: { flexDirection: 'row', borderBottomWidth: 2, borderBottomColor: '#000', paddingBottom: 5 },
-  row: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#eee', paddingVertical: 10 },
-  cell: { flex: 1, textAlign: 'center', fontSize: 14 },
-  headerCell: { fontWeight: 'bold' },
-  nameCell: { flex: 2, textAlign: 'left', paddingLeft: 10 },
+  cell: { height: 50, justifyContent: 'center', paddingHorizontal: 10, borderRightWidth: 1, borderColor: '#eee' },
+  headerText: { fontWeight: 'bold', fontSize: 13 },
+  input: { fontSize: 14, color: '#333' },
+  
+  addHeader: { width: 60, backgroundColor: '#e6f7ff', justifyContent: 'center', alignItems: 'center' },
+  addHeaderText: { color: '#007bff', fontWeight: 'bold' },
 
-  // Buttons
-  footer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
-  btnPrimary: { backgroundColor: '#28a745', padding: 12, borderRadius: 8, flex: 0.48, alignItems: 'center' },
-  btnSecondary: { backgroundColor: '#6c757d', padding: 12, borderRadius: 8, flex: 0.48, alignItems: 'center' },
-  btnText: { color: 'white', fontWeight: 'bold' },
-  btnTextSec: { color: 'white' },
+  deleteRowBtn: { width: 40, height: 50, justifyContent: 'center', alignItems: 'center' },
+  
+  addRowBtn: { padding: 15, alignItems: 'center', borderBottomWidth: 1, borderColor: '#eee' },
+  addRowText: { color: '#28a745', fontWeight: 'bold' },
 
-  // Modals
-  modalView: { margin: 20, marginTop: 100, backgroundColor: 'white', padding: 35, borderRadius: 20, elevation: 5, shadowColor: '#000', shadowOffset: {width:0, height:2}, shadowOpacity: 0.25 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
-  subTitle: { fontSize: 16, marginTop: 10, marginBottom: 5 },
-  input: { borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 5, marginBottom: 10 },
-  closeBtn: { marginTop: 10, alignItems: 'center' }
+  // Menus
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
+  menuBox: { width: 250, backgroundColor: 'white', borderRadius: 10, padding: 20, elevation: 5 },
+  menuTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15 },
+  menuInput: { borderBottomWidth: 1, borderColor: '#ddd', marginBottom: 15, fontSize: 16, paddingVertical: 5 },
+  menuItem: { paddingVertical: 12, borderBottomWidth: 1, borderColor: '#f0f0f0' },
+  menuText: { fontSize: 16 }
 });
