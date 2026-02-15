@@ -1,50 +1,112 @@
-# Welcome to your Expo app 👋
+# StockFlow 📦
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**StockFlow** is a modern, full-stack inventory management system designed for seamless tracking of assets across dynamic folders and products. Built with **React Native (Expo)** for cross-platform mobile access and **Python Flask** for a robust backend, it features real-time analytics, secure role-based authentication, and cloud synchronization.
 
-## Get started
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-lightgrey.svg)
+![Status](https://img.shields.io/badge/status-active-success.svg)
 
-1. Install dependencies
+## ✨ Features
 
-   ```bash
-   npm install
-   ```
+- **📂 Dynamic Schema**: Create custom folders and define custom fields (Text, Number, Currency) specific to each folder type.
+- **📊 Analytics Dashboard**: Visualize inventory value and quantities with interactive charts powered by `react-native-chart-kit`.
+- **🔐 secure Authentication**: 
+  - **Admin Mode**: Full CRUD access secured with JWT tokens and Bcrypt password hashing.
+  - **Guest Mode**: Read-only access for team members.
+- **☁️ Cloud Sync**: 
+  - Backend hosted on **Render** (Python Flask).
+  - Database managed by **TiDB Serverless** (MySQL).
+- **📱 Cross-Platform**: Optimized for both Android and iOS devices.
 
-2. Start the app
+## 🛠️ Tech Stack
 
-   ```bash
-   npx expo start
-   ```
+### Frontend (Mobile App)
+- **Framework**: React Native (Expo SDK 54)
+- **Navigation**: Expo Router (File-based routing)
+- **Styling**: StyleSheet API (Clean, component-scoped styles)
+- **HTTP Client**: Axios (with Interceptors for auth)
+- **Charts**: `react-native-chart-kit` & `react-native-svg`
 
-In the output, you'll find options to open the app in a
+### Backend (API)
+- **Server**: Python Flask
+- **WSGI Server**: Gunicorn (Production ready)
+- **Database**: MySQL 8.0 (TiDB Cloud)
+- **Authentication**: `bcrypt` for hashing, `secrets` for token generation
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 🚀 Getting Started
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### Prerequisites
+- Node.js (v18+)
+- Python (v3.9+)
+- Expo CLI (`npm install -g expo-cli`)
 
-## Get a fresh project
-
-When you're ready, run:
-
+### 1. Clone the Repository
 ```bash
-npm run reset-project
+git clone https://github.com/vedant27-lab/StockFlow.git
+cd StockFlow
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2. Backend Setup
+Set up the Python Flask server.
 
-## Learn more
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-To learn more about developing your project with Expo, look at the following resources:
+# Install dependencies
+pip install -r requirements.txt
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+# Configure Environment Variables
+# Create a .env file in the root directory with:
+# MYSQL_HOST=...
+# MYSQL_USER=...
+# MYSQL_PASSWORD=...
+# MYSQL_DB=stockflow
+# MYSQL_PORT=4000
 
-## Join the community
+# Initialize Database
+python scripts/initialize_db.py
 
-Join our community of developers creating universal apps.
+# Run Server
+python server.py
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### 3. Frontend Setup
+Run the mobile application.
+
+```bash
+# Install NPM packages
+npm install
+
+# Start Expo
+npx expo start
+```
+Scan the QR code with **Expo Go** on your Android/iOS device.
+
+## 📂 Project Structure
+
+```
+stockflow/
+├── app/                  # Expo Router screens (pages)
+├── components/           # Reusable UI components
+├── services/             # API integration (Axios)
+├── scripts/              # Database maintenance scripts
+├── server.py             # Flask API entry point
+├── schema.sql            # Database schema definition
+├── requirements.txt      # Python dependencies
+└── package.json          # Node dependencies
+```
+
+## 🔒 Authentication
+
+The system is pre-configured with a default admin account.
+- **Username**: `admin`
+- **Default Password**: `admin123` (Change this upon first deployment!)
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+*Built with ❤️ by Vedant.*

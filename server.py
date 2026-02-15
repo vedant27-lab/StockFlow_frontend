@@ -1,4 +1,12 @@
+"""
+StockFlow Backend Server
+------------------------
+A Flask-based REST API for the StockFlow inventory management system.
+Handles authentication, product management, and analytics queries.
+"""
+
 from flask import Flask, request, jsonify
+
 from flask_cors import CORS
 import mysql.connector
 from dotenv import load_dotenv
