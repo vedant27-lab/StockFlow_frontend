@@ -2,7 +2,6 @@
 
 **StockFlow** is a modern, full-stack inventory management system designed for seamless tracking of assets across dynamic folders and products. Built with **React Native (Expo)** for cross-platform mobile access and **Python Flask** for a robust backend, it features real-time analytics, secure role-based authentication, and cloud synchronization.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-lightgrey.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
