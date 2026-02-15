@@ -68,7 +68,29 @@ def require_admin(f):
     
     return decorated_function
 
+
+# --- TEMPORARY RESET ROUTE ---
+@app.route("/reset-admin", methods=["GET"])
+def reset_admin_password():
+    db = get_db()
+    cur = db.cursor()
+    password = 'admin123'
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    
+    # Update or Create Admin
+    cur.execute("SELECT * FROM admin_users WHERE username = 'admin'")
+    if cur.fetchone():
+        cur.execute("UPDATE admin_users SET password_hash = %s WHERE username = 'admin'", (hashed,))
+    else:
+        cur.execute("INSERT INTO admin_users (username, password_hash) VALUES ('admin', %s)", (hashed,))
+        
+    db.commit()
+    cur.close()
+    db.close()
+    return jsonify({"message": "Admin password reset to 'admin123' using server-side bcrypt."})
+
 # --- AUTHENTICATION ROUTES ---
+
 @app.route("/auth/login", methods=["POST"])
 def login():
     data = request.json
