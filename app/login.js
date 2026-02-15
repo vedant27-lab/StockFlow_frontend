@@ -128,13 +128,6 @@ export default function LoginScreen() {
                             </Text>
                         </View>
                     </View>
-
-                    {/* Default Credentials */}
-                    <View style={styles.credentialsBox}>
-                        <Text style={styles.credentialsTitle}>Default Admin Credentials:</Text>
-                        <Text style={styles.credentialsText}>Username: <Text style={styles.credentialsBold}>admin</Text></Text>
-                        <Text style={styles.credentialsText}>Password: <Text style={styles.credentialsBold}>admin123</Text></Text>
-                    </View>
                 </View>
             </ScrollView>
         </KeyboardAvoidingView>
