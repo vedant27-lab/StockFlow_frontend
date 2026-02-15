@@ -34,9 +34,12 @@ export default function LoginScreen() {
             Alert.alert('Success', 'Logged in successfully!', [
                 { text: 'OK', onPress: () => router.replace('/') }
             ]);
+
         } catch (error) {
             console.error('Login error:', error);
-            Alert.alert('Login Failed', 'Invalid username or password');
+            // DEBUG: Show the URL we tried to hit to confirm configuration
+            const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'UNDEFINED';
+            Alert.alert('Login Failed', `Invalid username or password. \n(API: ${apiUrl})`);
         } finally {
             setLoading(false);
         }
